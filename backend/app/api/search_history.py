@@ -5,14 +5,14 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from typing import List, Optional
 
-from backend.app.database import get_db
-from backend.app.models.search_history import SearchHistory
-from backend.app.models.property import Property
-from backend.app.models.user import User
-from backend.app.schemas.search_history import SearchHistoryCreate, SearchHistoryResponse
-from backend.app.schemas.property import PropertyResponse
-from backend.app.services.auth.auth_service import get_current_user_optional
-from backend.app.utils.timezone import get_dubai_now, to_dubai_time
+from app.database import get_db
+from app.models.search_history import SearchHistory
+from app.models.property import Property
+from app.models.user import User
+from app.schemas.search_history import SearchHistoryCreate, SearchHistoryResponse
+from app.schemas.property import PropertyResponse
+from app.services.auth.auth_service import get_current_user_optional
+from app.utils.timezone import get_dubai_now, to_dubai_time
 
 router = APIRouter(prefix="/search-history", tags=["Search History"])
 

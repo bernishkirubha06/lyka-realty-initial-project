@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from backend.app.schemas.property import PropertyResponse
+from app.schemas.property import PropertyResponse
 
 class LeadRequirements(BaseModel):
     customer_name: Optional[str] = None

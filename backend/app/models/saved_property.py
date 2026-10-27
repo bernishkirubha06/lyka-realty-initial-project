@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, DateTime, ForeignKey, UniqueConstraint
 from datetime import datetime
-from backend.app.database import Base
+from app.database import Base
 
 class SavedProperty(Base):
     __tablename__ = "saved_properties"

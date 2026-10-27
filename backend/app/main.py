@@ -1,20 +1,20 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.app.config import settings
-from backend.app.database import engine, Base
-import backend.app.models # ensures all models are registered
+from app.config import settings
+from app.database import engine, Base
+import app.models # ensures all models are registered
 
 # Import routers
-from backend.app.api.auth import router as auth_router
-from backend.app.api.ai import router as ai_router
-from backend.app.api.properties import router as properties_router
-from backend.app.api.leads import router as leads_router
-from backend.app.api.recommendations import router as recommendations_router
-from backend.app.api.site_visits import router as site_visits_router
-from backend.app.api.saved_properties import router as saved_properties_router
-from backend.app.api.analytics import router as analytics_router
-from backend.app.api.admin import router as admin_router
-from backend.app.api.search_history import router as search_history_router
+from app.api.auth import router as auth_router
+from app.api.ai import router as ai_router
+from app.api.properties import router as properties_router
+from app.api.leads import router as leads_router
+from app.api.recommendations import router as recommendations_router
+from app.api.site_visits import router as site_visits_router
+from app.api.saved_properties import router as saved_properties_router
+from app.api.analytics import router as analytics_router
+from app.api.admin import router as admin_router
+from app.api.search_history import router as search_history_router
 
 # Create database tables
 Base.metadata.create_all(bind=engine)

@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
 from datetime import datetime
-from backend.app.database import Base
-from backend.app.utils.timezone import get_dubai_now
+from app.database import Base
+from app.utils.timezone import get_dubai_now
 
 class SiteVisit(Base):
     __tablename__ = "site_visits"

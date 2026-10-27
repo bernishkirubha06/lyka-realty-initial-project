@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Float, Boolean, Text, DateTime
 from datetime import datetime
-from backend.app.database import Base
+from app.database import Base
 
 class Property(Base):
     __tablename__ = "properties"

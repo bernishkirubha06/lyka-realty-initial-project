@@ -1,7 +1,7 @@
 import re
 import json
 from typing import Dict, Any, Optional, Tuple, List
-from backend.app.schemas.lead import LeadRequirements
+from app.schemas.lead import LeadRequirements
 
 # Known localities in Dubai & Chennai
 KNOWN_LOCALITIES = [

@@ -4,15 +4,15 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, or_
 from typing import List, Optional
 
-from backend.app.database import get_db
-from backend.app.models.site_visit import SiteVisit
-from backend.app.models.property import Property
-from backend.app.models.lead import Lead
-from backend.app.models.user import User
-from backend.app.schemas.site_visit import SiteVisitCreate, SiteVisitResponse, SiteVisitUpdate
-from backend.app.schemas.property import PropertyResponse
-from backend.app.services.auth.auth_service import get_current_user_optional, get_current_agent
-from backend.app.utils.timezone import to_dubai_time, get_dubai_now
+from app.database import get_db
+from app.models.site_visit import SiteVisit
+from app.models.property import Property
+from app.models.lead import Lead
+from app.models.user import User
+from app.schemas.site_visit import SiteVisitCreate, SiteVisitResponse, SiteVisitUpdate
+from app.schemas.property import PropertyResponse
+from app.services.auth.auth_service import get_current_user_optional, get_current_agent
+from app.utils.timezone import to_dubai_time, get_dubai_now
 
 router = APIRouter(prefix="/site-visits", tags=["Site Visits"])
 

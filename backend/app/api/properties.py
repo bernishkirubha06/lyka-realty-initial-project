@@ -4,16 +4,16 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, asc
 from typing import Optional, List
 
-from backend.app.database import get_db
-from backend.app.models.property import Property
-from backend.app.models.user import User
-from backend.app.schemas.property import (
+from app.database import get_db
+from app.models.property import Property
+from app.models.user import User
+from app.schemas.property import (
     PropertyResponse,
     PropertyListResponse,
     PropertyCreate,
     PropertyUpdate
 )
-from backend.app.services.auth.auth_service import get_current_agent
+from app.services.auth.auth_service import get_current_agent
 
 router = APIRouter(prefix="/properties", tags=["Properties"])
 
@@ -132,7 +132,7 @@ def get_property(id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Property not found")
     return _format_property_response(prop)
 
-from backend.app.services.auth.auth_service import get_current_admin
+from app.services.auth.auth_service import get_current_admin
 
 @router.post("", response_model=PropertyResponse)
 def create_property(

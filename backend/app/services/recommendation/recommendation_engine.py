@@ -1,9 +1,9 @@
 import json
 from typing import List, Dict, Any, Tuple
 from sqlalchemy.orm import Session
-from backend.app.models.property import Property
-from backend.app.schemas.lead import LeadRequirements, RecommendationItem
-from backend.app.schemas.property import PropertyResponse
+from app.models.property import Property
+from app.schemas.lead import LeadRequirements, RecommendationItem
+from app.schemas.property import PropertyResponse
 
 def calculate_property_match(prop: Property, req: LeadRequirements) -> Tuple[int, List[str], Dict[str, float]]:
     """

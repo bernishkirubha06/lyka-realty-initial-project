@@ -3,16 +3,16 @@ import json
 from typing import List, Tuple, Dict, Any, Optional
 from sqlalchemy.orm import Session
 
-from backend.app.config import settings
-from backend.app.schemas.lead import LeadRequirements, LeadScoreBreakdown, RecommendationItem
-from backend.app.schemas.ai import ChatMessage, ChatResponse
-from backend.app.models.lead import Lead
-from backend.app.models.conversation import Conversation, Message
-from backend.app.models.recommendation import Recommendation
-from backend.app.services.ai.requirement_extraction_service import extract_requirements_from_text
-from backend.app.services.ai.lead_scoring_service import calculate_lead_score, generate_ai_lead_summary
-from backend.app.services.recommendation.recommendation_engine import get_recommendations_for_requirements
-from backend.app.services.ai.local_llama_service import generate_local_llama_reply
+from app.config import settings
+from app.schemas.lead import LeadRequirements, LeadScoreBreakdown, RecommendationItem
+from app.schemas.ai import ChatMessage, ChatResponse
+from app.models.lead import Lead
+from app.models.conversation import Conversation, Message
+from app.models.recommendation import Recommendation
+from app.services.ai.requirement_extraction_service import extract_requirements_from_text
+from app.services.ai.lead_scoring_service import calculate_lead_score, generate_ai_lead_summary
+from app.services.recommendation.recommendation_engine import get_recommendations_for_requirements
+from app.services.ai.local_llama_service import generate_local_llama_reply
 
 SYSTEM_PROMPT = """You are Lyka AI, the luxury real estate advisor for Lyka Realty (Dubai, UAE).
 Your goal is to assist clients efficiently and keep replies brief and helpful.

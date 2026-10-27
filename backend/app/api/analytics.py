@@ -2,13 +2,13 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from backend.app.database import get_db
-from backend.app.models.lead import Lead
-from backend.app.models.property import Property
-from backend.app.models.site_visit import SiteVisit
-from backend.app.models.user import User
-from backend.app.models.follow_up import FollowUpNote
-from backend.app.schemas.analytics import (
+from app.database import get_db
+from app.models.lead import Lead
+from app.models.property import Property
+from app.models.site_visit import SiteVisit
+from app.models.user import User
+from app.models.follow_up import FollowUpNote
+from app.schemas.analytics import (
     DashboardAnalyticsResponse,
     StatusCount,
     LocationCount,
@@ -17,7 +17,7 @@ from backend.app.schemas.analytics import (
     PipelineStageCount,
     AgentPerformanceItem
 )
-from backend.app.services.auth.auth_service import get_current_agent
+from app.services.auth.auth_service import get_current_agent
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard Analytics"])
 

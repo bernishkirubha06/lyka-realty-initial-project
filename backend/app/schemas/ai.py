@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
-from backend.app.schemas.lead import LeadRequirements, LeadScoreBreakdown, RecommendationItem
+from app.schemas.lead import LeadRequirements, LeadScoreBreakdown, RecommendationItem
 
 class ChatMessage(BaseModel):
     role: str # 'user' or 'assistant'

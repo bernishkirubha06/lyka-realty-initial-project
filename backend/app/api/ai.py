@@ -2,19 +2,19 @@ from fastapi import APIRouter, Depends, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import Optional
 
-from backend.app.database import get_db
-from backend.app.models.user import User
-from backend.app.schemas.ai import (
+from app.database import get_db
+from app.models.user import User
+from app.schemas.ai import (
     ChatRequest,
     ChatResponse,
     RequirementExtractionRequest,
     RequirementExtractionResponse,
     VoiceTranscriptionResponse
 )
-from backend.app.services.auth.auth_service import get_current_user_optional
-from backend.app.services.ai.conversation_service import process_chat_message
-from backend.app.services.ai.requirement_extraction_service import extract_requirements_from_text
-from backend.app.services.ai.speech_service import transcribe_audio_file
+from app.services.auth.auth_service import get_current_user_optional
+from app.services.ai.conversation_service import process_chat_message
+from app.services.ai.requirement_extraction_service import extract_requirements_from_text
+from app.services.ai.speech_service import transcribe_audio_file
 
 router = APIRouter(prefix="/ai", tags=["AI Assistant"])
 

@@ -2,23 +2,23 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from backend.app.database import get_db
-from backend.app.models.user import User
-from backend.app.schemas.auth import UserCreate, UserLogin, UserResponse, Token
-from backend.app.services.auth.auth_service import (
+from app.database import get_db
+from app.models.user import User
+from app.schemas.auth import UserCreate, UserLogin, UserResponse, Token
+from app.services.auth.auth_service import (
     hash_password,
     verify_password,
     create_access_token,
     get_current_user
 )
-from backend.app.services.auth.staff_roster import (
+from app.services.auth.staff_roster import (
     is_email_authorized_for_role,
     ALLOWED_SALES_EMAILS,
     ALLOWED_MANAGER_EMAILS,
     ALLOWED_ADMIN_EMAILS,
     DISALLOWED_MOCK_EMAILS
 )
-from backend.app.utils.timezone import to_dubai_time, get_dubai_now
+from app.utils.timezone import to_dubai_time, get_dubai_now
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -82,7 +82,7 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
 
     # Automatically store new customer account details in the Agent/Manager/Admin CRM Lead database
     if assigned_role == "customer":
-        from backend.app.models.lead import Lead
+        from app.models.lead import Lead
         existing_lead = db.query(Lead).filter(
             (Lead.email == new_user.email) | ((Lead.phone != None) & (Lead.phone == new_user.phone))
         ).first()

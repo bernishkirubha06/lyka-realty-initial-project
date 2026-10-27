@@ -5,13 +5,13 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, func, or_
 from typing import Optional, List
 
-from backend.app.database import get_db
-from backend.app.models.lead import Lead
-from backend.app.models.property import Property
-from backend.app.models.recommendation import Recommendation
-from backend.app.models.user import User
-from backend.app.models.follow_up import FollowUpNote
-from backend.app.schemas.lead import (
+from app.database import get_db
+from app.models.lead import Lead
+from app.models.property import Property
+from app.models.recommendation import Recommendation
+from app.models.user import User
+from app.models.follow_up import FollowUpNote
+from app.schemas.lead import (
     LeadResponse,
     LeadCreate,
     LeadUpdate,
@@ -21,17 +21,17 @@ from backend.app.schemas.lead import (
     FollowUpResponse,
     LeadAssignRequest
 )
-from backend.app.schemas.property import PropertyResponse
-from backend.app.services.auth.auth_service import (
+from app.schemas.property import PropertyResponse
+from app.services.auth.auth_service import (
     get_current_user,
     get_current_agent,
     get_current_manager,
     get_current_admin,
     get_current_user_optional
 )
-from backend.app.services.ai.lead_scoring_service import calculate_lead_score, generate_ai_lead_summary
-from backend.app.services.recommendation.recommendation_engine import get_recommendations_for_requirements
-from backend.app.utils.timezone import to_dubai_time, get_dubai_now
+from app.services.ai.lead_scoring_service import calculate_lead_score, generate_ai_lead_summary
+from app.services.recommendation.recommendation_engine import get_recommendations_for_requirements
+from app.utils.timezone import to_dubai_time, get_dubai_now
 
 router = APIRouter(prefix="/leads", tags=["Leads"])
 

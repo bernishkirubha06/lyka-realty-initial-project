@@ -10,15 +10,15 @@ from sqlalchemy.orm import Session
 # Ensure backend package can be imported
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from backend.app.database import engine, SessionLocal, Base
-from backend.app.models.user import User
-from backend.app.models.property import Property
-from backend.app.models.lead import Lead
-from backend.app.models.conversation import Conversation, Message
-from backend.app.models.recommendation import Recommendation
-from backend.app.models.site_visit import SiteVisit
-from backend.app.models.saved_property import SavedProperty
-from backend.app.services.auth.auth_service import hash_password
+from app.database import engine, SessionLocal, Base
+from app.models.user import User
+from app.models.property import Property
+from app.models.lead import Lead
+from app.models.conversation import Conversation, Message
+from app.models.recommendation import Recommendation
+from app.models.site_visit import SiteVisit
+from app.models.saved_property import SavedProperty
+from app.services.auth.auth_service import hash_password
 
 # Curated high-resolution architecture images for Dubai & Chennai properties
 DUBAI_IMAGES = [

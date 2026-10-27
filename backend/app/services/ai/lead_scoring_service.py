@@ -1,5 +1,5 @@
 from typing import Dict, Any, List
-from backend.app.schemas.lead import LeadRequirements, LeadScoreBreakdown
+from app.schemas.lead import LeadRequirements, LeadScoreBreakdown
 
 def calculate_lead_score(req: LeadRequirements, interaction_count: int = 1) -> LeadScoreBreakdown:
     """

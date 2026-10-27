@@ -1,7 +1,7 @@
 import torch
 from transformers import pipeline
 from typing import Optional, List, Dict, Any
-from backend.app.config import settings
+from app.config import settings
 
 _llama_pipe = None
 _pipe_loading = False

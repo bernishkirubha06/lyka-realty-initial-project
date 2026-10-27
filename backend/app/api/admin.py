@@ -6,14 +6,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from backend.app.database import get_db
-from backend.app.models.user import User
-from backend.app.models.lead import Lead
-from backend.app.models.property import Property
-from backend.app.models.follow_up import FollowUpNote
-from backend.app.schemas.auth import UserResponse
-from backend.app.services.auth.auth_service import get_current_admin, hash_password
-from backend.app.services.auth.staff_roster import is_email_authorized_for_role
+from app.database import get_db
+from app.models.user import User
+from app.models.lead import Lead
+from app.models.property import Property
+from app.models.follow_up import FollowUpNote
+from app.schemas.auth import UserResponse
+from app.services.auth.auth_service import get_current_admin, hash_password
+from app.services.auth.staff_roster import is_email_authorized_for_role
 
 router = APIRouter(prefix="/admin", tags=["Administrator Controls"])
 

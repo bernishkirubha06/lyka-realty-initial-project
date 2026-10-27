@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, DateTime
 from datetime import datetime
-from backend.app.database import Base
-from backend.app.utils.timezone import get_dubai_now
+from app.database import Base
+from app.utils.timezone import get_dubai_now
 
 class User(Base):
     __tablename__ = "users"
