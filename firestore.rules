@@ -1,0 +1,78 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user is an approved salesperson
+    function isApprovedSalesperson() {
+      return isAuthenticated() && (
+        request.auth.token.email in [
+          'agent@lykarealty.ae',
+          'agent2@lykarealty.ae',
+          'sales@lykarealty.ae',
+          'manager@lykarealty.ae',
+          'sarah.jenkins@lykarealty.ae',
+          'rajesh.sharma@lykarealty.ae'
+        ] ||
+        request.auth.token.role in ['salesperson', 'manager', 'admin']
+      );
+    }
+    
+    // Helper function to check if salesperson is assigned to the lead
+    function isAssignedSalesperson(leadData) {
+      return isApprovedSalesperson() && (
+        request.auth.token.email == leadData.assigned_to_email ||
+        request.auth.token.role in ['manager', 'admin']
+      );
+    }
+    
+    // 1. Leads collection
+    match /leads/{leadId} {
+      // Salespeople can view assigned leads; managers/admins can view all leads
+      allow read: if isApprovedSalesperson() && (
+        resource.data.assigned_to_email == request.auth.token.email ||
+        resource.data.assigned_to_email == null ||
+        request.auth.token.role in ['manager', 'admin']
+      );
+      
+      // Customers can create leads via requirement form; salespeople can create and update
+      allow create: if true;
+      allow update, delete: if isApprovedSalesperson();
+    }
+    
+    // 2. Customer Activity collection (Tracking page views, properties viewed, time spent)
+    match /customer_activities/{activityId} {
+      // Any visitor/customer can log their own activity events
+      allow create: if true;
+      
+      // Only approved salespeople and managers can read customer activity tracking
+      allow read: if isApprovedSalesperson();
+      
+      // Activities are immutable audit logs
+      allow update, delete: if request.auth.token.role == 'admin';
+    }
+    
+    // 3. Follow-up Notes & Reminders
+    match /follow_ups/{followUpId} {
+      // Strictly visible only to approved salespeople
+      allow read, write: if isApprovedSalesperson();
+    }
+    
+    // 4. Site Visits
+    match /site_visits/{visitId} {
+      // Customers can book a site visit; salespeople can view and manage
+      allow create: if true;
+      allow read, update, delete: if isApprovedSalesperson();
+    }
+    
+    // 5. Sales Agents Roster
+    match /sales_agents/{agentId} {
+      allow read: if isAuthenticated();
+      allow write: if request.auth.token.role == 'admin';
+    }
+  }
+}
