@@ -87,10 +87,14 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
             (Lead.email == new_user.email) | ((Lead.phone != None) & (Lead.phone == new_user.phone))
         ).first()
 
-        fallback_agent = db.query(User).filter(User.role == "agent").first()
-        if not fallback_agent:
+        # Fair round-robin assignment among all 12 sales agents (assign to least loaded agent)
+        agents = db.query(User).filter(User.role == "agent").all()
+        if agents:
+            agent_counts = {a.id: db.query(Lead).filter(Lead.user_id == a.id).count() for a in agents}
+            agent_id = min(agent_counts, key=agent_counts.get)
+        else:
             fallback_agent = db.query(User).filter(User.role.in_(["agent", "manager", "admin"])).first()
-        agent_id = fallback_agent.id if fallback_agent else None
+            agent_id = fallback_agent.id if fallback_agent else None
 
         if existing_lead:
             existing_lead.customer_name = new_user.full_name or existing_lead.customer_name
@@ -99,6 +103,16 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
             existing_lead.country = new_user.country or existing_lead.country
             existing_lead.gender = new_user.gender or existing_lead.gender
             existing_lead.dob = new_user.dob or existing_lead.dob
+            if not existing_lead.locality:
+                existing_lead.locality = "Downtown Dubai"
+            if not existing_lead.property_type:
+                existing_lead.property_type = "Apartment"
+            if not existing_lead.bhk:
+                existing_lead.bhk = 2
+            if not existing_lead.budget_max:
+                existing_lead.budget_max = 3000000
+            if not existing_lead.budget_min:
+                existing_lead.budget_min = 1000000
             if not existing_lead.user_id and agent_id:
                 existing_lead.user_id = agent_id
             db.commit()
@@ -111,15 +125,22 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
                 phone=new_user.phone,
                 lead_type="Buyer",
                 city="Dubai",
+                locality="Downtown Dubai",
                 address=new_user.address,
                 country=new_user.country,
                 gender=new_user.gender,
                 dob=new_user.dob,
+                property_type="Apartment",
+                bhk=2,
+                budget_min=1000000,
+                budget_max=3000000,
+                currency="AED",
+                purchase_timeline="Within 3 months",
                 pipeline_status="new",
-                lead_score=40,
+                lead_score=50,
                 lead_category="WARM",
                 lead_explanation="Registered customer account on Lyka Realty website portal.",
-                ai_summary=f"New customer account created by {new_user.full_name} ({new_user.country or 'International'}). Registered with email {new_user.email} and phone {new_user.phone or 'not provided'}."
+                ai_summary=f"New customer account enrolled by {new_user.full_name} ({new_user.country or 'International'}). Registered with email {new_user.email} and phone {new_user.phone or 'not provided'}."
             )
             db.add(new_lead)
             db.commit()
@@ -158,11 +179,19 @@ def login(login_in: UserLogin, db: Session = Depends(get_db)):
     is_valid = False
     if user:
         is_valid = verify_password(clean_password, user.hashed_password)
-        if not is_valid and clean_email in DEMO_PASSWORDS and clean_password in DEMO_PASSWORDS[clean_email]:
-            is_valid = True
-            # Update hashed password so future checks match
-            user.hashed_password = hash_password(clean_password)
-            db.commit()
+        if not is_valid:
+            # Check if current stored password is still one of the initial default hashes
+            is_initial_default = False
+            for def_pw in ["password123", "agent123", "manager123", "admin123", "admin"]:
+                if verify_password(def_pw, user.hashed_password):
+                    is_initial_default = True
+                    break
+
+            # Only fallback to initial defaults if the password hasn't been personalized by admin
+            if (is_initial_default or not user.hashed_password) and clean_email in DEMO_PASSWORDS and clean_password in DEMO_PASSWORDS[clean_email]:
+                is_valid = True
+                user.hashed_password = hash_password(clean_password)
+                db.commit()
 
     if not user or not is_valid:
         raise HTTPException(

@@ -32,7 +32,9 @@ import {
   Lock,
   LogOut,
   Sparkles,
-  UserCheck
+  UserCheck,
+  Snowflake,
+  Zap
 } from "lucide-react";
 import PortalNavbar from "@/components/PortalNavbar";
 import Footer from "@/components/Footer";
@@ -80,6 +82,7 @@ export default function SalesPersonDashboard() {
   const [locationFilter, setLocationFilter] = useState<string>("all");
   const [budgetFilter, setBudgetFilter] = useState<string>("all");
   const [followUpFilter, setFollowUpFilter] = useState<string>("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all"); // "all" | "HOT" | "WARM" | "COLD"
 
   // Selected Customer Details Drawer
   const [selectedCustomer, setSelectedCustomer] = useState<SalesLead | null>(null);
@@ -114,7 +117,7 @@ export default function SalesPersonDashboard() {
       setAuthError("No active staff session. Please authenticate via the Staff Portal.");
       setIsAuthenticated(false);
       setLoading(false);
-      router.replace("/portal");
+      router.replace("/");
       return;
     }
 
@@ -129,7 +132,7 @@ export default function SalesPersonDashboard() {
         setAuthError("Access Restricted: Mock email accounts are strictly prohibited. Please sign in with your official corporate email.");
         setIsAuthenticated(false);
         setLoading(false);
-        router.replace("/portal?error=mock_forbidden");
+        router.replace("/");
         return;
       }
 
@@ -162,14 +165,14 @@ export default function SalesPersonDashboard() {
         setAuthError("Unauthorized role for Salesperson Dashboard.");
         setIsAuthenticated(false);
         setLoading(false);
-        router.replace("/portal");
+        router.replace("/");
         return;
       }
     } catch {
       setAuthError("Session invalid. Please sign in again.");
       setIsAuthenticated(false);
       setLoading(false);
-      router.replace("/portal");
+      router.replace("/");
       return;
     }
 
@@ -208,6 +211,36 @@ export default function SalesPersonDashboard() {
     const unsubVisits = firebaseService.subscribeSiteVisits(activeSalespersonEmail, (data) => {
       setSiteVisits(data);
     });
+
+    // Sync backend database leads assigned to this salesperson (including enrolled customers)
+    api.getLeads({ scope: "mine" }).then((dbLeads) => {
+      if (dbLeads && dbLeads.length > 0) {
+        dbLeads.forEach(al => {
+          firebaseService.saveLead({
+            id: `lead_db_${al.id}`,
+            customer_name: al.customer_name || "Valued Client",
+            email: al.email,
+            phone: al.phone,
+            city: al.city || "Dubai",
+            locality: al.locality || "Downtown Dubai",
+            property_type: al.property_type || "Apartment",
+            bhk: al.bhk || 2,
+            budget_min: al.budget_min || 1000000,
+            budget_max: al.budget_max || 3000000,
+            currency: al.currency || "AED",
+            purchase_timeline: al.purchase_timeline || "Within 3 months",
+            preferred_features: al.preferred_features || ["Enrolled Customer"],
+            pipeline_status: (al.pipeline_status as any) || "New",
+            purpose: al.purpose || "Investment",
+            lead_type: al.lead_type || "Buyer",
+            assigned_to_email: activeSalespersonEmail,
+            assigned_agent_name: activeSalespersonName,
+            notes: al.ai_summary || al.lead_explanation || "Customer enrolled via portal.",
+            is_demo: false
+          });
+        });
+      }
+    }).catch(() => {});
 
     return () => {
       unsubLeads();
@@ -329,9 +362,38 @@ export default function SalesPersonDashboard() {
     }
   };
 
+  // Lead Temperature Category & Score Helpers
+  const getLeadCategory = (lead: SalesLead): "HOT" | "WARM" | "COLD" => {
+    if (lead.lead_category) return lead.lead_category;
+    if (typeof lead.lead_score === "number") {
+      if (lead.lead_score >= 70) return "HOT";
+      if (lead.lead_score >= 40) return "WARM";
+      return "COLD";
+    }
+    const status = (lead.pipeline_status || "").toLowerCase();
+    if (status === "viewing scheduled" || status === "negotiation" || (lead.budget_max && lead.budget_max >= 3000000)) {
+      return "HOT";
+    }
+    if (status === "interested" || status === "contacted" || lead.purchase_timeline?.toLowerCase().includes("3 months")) {
+      return "WARM";
+    }
+    return "COLD";
+  };
+
+  const getLeadScore = (lead: SalesLead): number => {
+    if (typeof lead.lead_score === "number") return lead.lead_score;
+    const cat = getLeadCategory(lead);
+    if (cat === "HOT") return 85;
+    if (cat === "WARM") return 55;
+    return 30;
+  };
+
   // KPI Calculations
   const metrics = useMemo(() => {
     const totalAssigned = leads.length;
+    const hotLeads = leads.filter(l => getLeadCategory(l) === "HOT").length;
+    const warmLeads = leads.filter(l => getLeadCategory(l) === "WARM").length;
+    const coldLeads = leads.filter(l => getLeadCategory(l) === "COLD").length;
     const newEnquiries = leads.filter(l => l.pipeline_status === "New").length;
     const contacted = leads.filter(l => l.pipeline_status === "Contacted").length;
     
@@ -348,6 +410,9 @@ export default function SalesPersonDashboard() {
 
     return {
       totalAssigned,
+      hotLeads,
+      warmLeads,
+      coldLeads,
       newEnquiries,
       contacted,
       followUpsDueCount,
@@ -411,9 +476,16 @@ export default function SalesPersonDashboard() {
         }
       }
 
+      // 6. Category Filter (HOT / WARM / COLD)
+      if (categoryFilter !== "all") {
+        if (getLeadCategory(lead) !== categoryFilter.toUpperCase()) {
+          return false;
+        }
+      }
+
       return true;
     });
-  }, [leads, searchQuery, statusFilter, locationFilter, budgetFilter, followUpFilter, followUps, clientNow]);
+  }, [leads, searchQuery, statusFilter, locationFilter, budgetFilter, followUpFilter, categoryFilter, followUps, clientNow]);
 
   // Customer activity for currently selected customer
   const selectedCustomerActivities = useMemo(() => {
@@ -545,10 +617,10 @@ export default function SalesPersonDashboard() {
             </p>
             <div className="pt-2">
               <Link
-                href="/portal"
+                href="/"
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#C5A869] text-black font-semibold text-xs hover:bg-[#d6ba7c] transition"
               >
-                <span>Authenticate at Staff Portal</span>
+                <span>Return to Sign In</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </Link>
             </div>
@@ -626,6 +698,10 @@ export default function SalesPersonDashboard() {
                 <div className="text-[10px] text-zinc-400 font-mono">
                   {activeSalespersonEmail}
                 </div>
+                <div className="text-[10px] text-[#C5A869] font-medium flex items-center gap-1 mt-0.5">
+                  <MapPin className="w-3 h-3 text-[#C5A869]" />
+                  <span>Allotted Territory: {APPROVED_SALES_PERSONS.find(sp => sp.email.toLowerCase() === (activeSalespersonEmail || "").toLowerCase())?.specialty || "Dubai Prime Residential"}</span>
+                </div>
               </div>
             </div>
           ) : (
@@ -657,14 +733,16 @@ export default function SalesPersonDashboard() {
         </div>
 
         {/* FEATURE 1: DASHBOARD OVERVIEW KPI CARDS */}
-        <section className="grid grid-cols-2 lg:grid-cols-5 gap-3.5 sm:gap-4">
+        <section className="grid grid-cols-2 lg:grid-cols-6 gap-3.5 sm:gap-4">
           {/* Card 1: Total Assigned Leads */}
           <div 
-            onClick={() => { setActiveTab("leads"); setStatusFilter("all"); }}
-            className="p-4 sm:p-5 rounded-2xl bg-[#111319] border border-zinc-800 hover:border-[#C5A869]/50 transition cursor-pointer shadow-lg space-y-1.5 group"
+            onClick={() => { setActiveTab("leads"); setStatusFilter("all"); setCategoryFilter("all"); }}
+            className={`p-4 sm:p-5 rounded-2xl bg-[#111319] border transition cursor-pointer shadow-lg space-y-1.5 group ${
+              categoryFilter === "all" && statusFilter === "all" ? "border-[#C5A869] bg-[#C5A869]/5" : "border-zinc-800 hover:border-[#C5A869]/50"
+            }`}
           >
             <div className="flex items-center justify-between text-zinc-400 text-xs font-mono">
-              <span>Total Assigned Leads</span>
+              <span>Total Assigned</span>
               <Users className="w-4 h-4 text-[#C5A869] group-hover:scale-110 transition-transform" />
             </div>
             <div className="text-2xl sm:text-3xl font-extrabold text-white font-mono">
@@ -673,37 +751,58 @@ export default function SalesPersonDashboard() {
             <div className="text-[10px] text-zinc-400">Assigned customer accounts</div>
           </div>
 
-          {/* Card 2: New Enquiries */}
+          {/* Card 2: Hot Leads */}
           <div 
-            onClick={() => { setActiveTab("leads"); setStatusFilter("new"); }}
-            className="p-4 sm:p-5 rounded-2xl bg-[#111319] border border-blue-900/30 hover:border-blue-500/60 transition cursor-pointer shadow-lg space-y-1.5 group"
+            onClick={() => { setActiveTab("leads"); setCategoryFilter("HOT"); }}
+            className={`p-4 sm:p-5 rounded-2xl bg-[#111319] border transition cursor-pointer shadow-lg space-y-1.5 group ${
+              categoryFilter === "HOT" ? "border-red-500 bg-red-950/30" : "border-red-900/30 hover:border-red-500/60"
+            }`}
+          >
+            <div className="flex items-center justify-between text-red-400 text-xs font-mono">
+              <span>🔥 Hot Leads</span>
+              <Flame className="w-4 h-4 text-red-400 group-hover:scale-110 transition-transform" />
+            </div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-red-400 font-mono">
+              {metrics.hotLeads}
+            </div>
+            <div className="text-[10px] text-zinc-400">Score ≥ 70 • High urgency</div>
+          </div>
+
+          {/* Card 3: Warm Leads */}
+          <div 
+            onClick={() => { setActiveTab("leads"); setCategoryFilter("WARM"); }}
+            className={`p-4 sm:p-5 rounded-2xl bg-[#111319] border transition cursor-pointer shadow-lg space-y-1.5 group ${
+              categoryFilter === "WARM" ? "border-amber-500 bg-amber-950/30" : "border-amber-900/30 hover:border-amber-500/60"
+            }`}
+          >
+            <div className="flex items-center justify-between text-amber-400 text-xs font-mono">
+              <span>⚡ Warm Leads</span>
+              <Sparkles className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
+            </div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-amber-400 font-mono">
+              {metrics.warmLeads}
+            </div>
+            <div className="text-[10px] text-zinc-400">Score 40–69 • Active interest</div>
+          </div>
+
+          {/* Card 4: Cold Leads */}
+          <div 
+            onClick={() => { setActiveTab("leads"); setCategoryFilter("COLD"); }}
+            className={`p-4 sm:p-5 rounded-2xl bg-[#111319] border transition cursor-pointer shadow-lg space-y-1.5 group ${
+              categoryFilter === "COLD" ? "border-blue-500 bg-blue-950/30" : "border-blue-900/30 hover:border-blue-500/60"
+            }`}
           >
             <div className="flex items-center justify-between text-blue-400 text-xs font-mono">
-              <span>New Enquiries</span>
-              <Sparkles className="w-4 h-4 text-blue-400 group-hover:scale-110 transition-transform" />
+              <span>❄️ Cold Leads</span>
+              <Snowflake className="w-4 h-4 text-blue-400 group-hover:scale-110 transition-transform" />
             </div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-white font-mono">
-              {metrics.newEnquiries}
+            <div className="text-2xl sm:text-3xl font-extrabold text-blue-400 font-mono">
+              {metrics.coldLeads}
             </div>
-            <div className="text-[10px] text-zinc-400">Requires first contact</div>
+            <div className="text-[10px] text-zinc-400">Score &lt; 40 • Discovery stage</div>
           </div>
 
-          {/* Card 3: Contacted Customers */}
-          <div 
-            onClick={() => { setActiveTab("leads"); setStatusFilter("contacted"); }}
-            className="p-4 sm:p-5 rounded-2xl bg-[#111319] border border-cyan-900/30 hover:border-cyan-500/60 transition cursor-pointer shadow-lg space-y-1.5 group"
-          >
-            <div className="flex items-center justify-between text-cyan-400 text-xs font-mono">
-              <span>Contacted Customers</span>
-              <Phone className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform" />
-            </div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-white font-mono">
-              {metrics.contacted}
-            </div>
-            <div className="text-[10px] text-zinc-400">In discovery dialogue</div>
-          </div>
-
-          {/* Card 4: Follow-ups Due */}
+          {/* Card 5: Follow-ups Due */}
           <div 
             onClick={() => { setActiveTab("followups"); setFollowUpFilter("due_today"); }}
             className="p-4 sm:p-5 rounded-2xl bg-[#111319] border border-amber-900/30 hover:border-amber-500/60 transition cursor-pointer shadow-lg space-y-1.5 group"
@@ -718,13 +817,13 @@ export default function SalesPersonDashboard() {
             <div className="text-[10px] text-zinc-400">Due today or overdue</div>
           </div>
 
-          {/* Card 5: Site Visits Scheduled */}
+          {/* Card 6: Site Visits Scheduled */}
           <div 
             onClick={() => setActiveTab("visits")}
             className="p-4 sm:p-5 rounded-2xl bg-[#111319] border border-emerald-900/30 hover:border-emerald-500/60 transition cursor-pointer shadow-lg space-y-1.5 group col-span-2 lg:col-span-1"
           >
             <div className="flex items-center justify-between text-emerald-400 text-xs font-mono">
-              <span>Site Visits Scheduled</span>
+              <span>Site Visits</span>
               <Calendar className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
             </div>
             <div className="text-2xl sm:text-3xl font-extrabold text-white font-mono">
@@ -809,7 +908,7 @@ export default function SalesPersonDashboard() {
           <div className="space-y-4 animate-fade-in">
             {/* Search and Filters Bar (Feature 9) */}
             <div className="p-4 rounded-2xl bg-[#111319] border border-zinc-800 space-y-3 shadow-lg">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
                 {/* Search Input */}
                 <div className="relative lg:col-span-2">
                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
@@ -823,6 +922,20 @@ export default function SalesPersonDashboard() {
                   {searchQuery && (
                     <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white text-xs">✕</button>
                   )}
+                </div>
+
+                {/* Lead Category Filter (HOT / WARM / COLD) */}
+                <div>
+                  <select
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                    className="w-full bg-[#181B24] border border-[#262A36] focus:border-[#C5A869] rounded-xl px-3 py-2.5 text-xs text-zinc-200 focus:outline-none transition font-semibold"
+                  >
+                    <option value="all">All Temperatures (Hot/Warm/Cold)</option>
+                    <option value="HOT">🔥 Hot Leads ({metrics.hotLeads})</option>
+                    <option value="WARM">⚡ Warm Leads ({metrics.warmLeads})</option>
+                    <option value="COLD">❄️ Cold Leads ({metrics.coldLeads})</option>
+                  </select>
                 </div>
 
                 {/* Lead Status Filter */}
@@ -873,39 +986,72 @@ export default function SalesPersonDashboard() {
                 </div>
               </div>
 
-              {/* Sub-filter pills (Follow-ups & Active Filters Reset) */}
+              {/* Sub-filter pills (Hot/Warm/Cold, Follow-ups & Active Filters Reset) */}
               <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-800/60 text-xs">
-                <div className="flex items-center gap-2 overflow-x-auto">
-                  <span className="text-[11px] text-zinc-500 uppercase font-mono">Follow-up Filter:</span>
-                  {[
-                    { id: "all", label: "All" },
-                    { id: "due_today", label: "Due Today" },
-                    { id: "overdue", label: "Overdue" },
-                    { id: "has_followup", label: "Has Pending Follow-up" }
-                  ].map(f => (
-                    <button
-                      key={f.id}
-                      onClick={() => setFollowUpFilter(f.id)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-mono transition ${
-                        followUpFilter === f.id
-                          ? "bg-[#C5A869]/20 text-[#E1CB8E] border border-[#C5A869]/40 font-bold"
-                          : "text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-800"
-                      }`}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* Category Pills */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-zinc-500 uppercase font-mono">Category:</span>
+                    {[
+                      { id: "all", label: "All" },
+                      { id: "HOT", label: `🔥 Hot (${metrics.hotLeads})` },
+                      { id: "WARM", label: `⚡ Warm (${metrics.warmLeads})` },
+                      { id: "COLD", label: `❄️ Cold (${metrics.coldLeads})` }
+                    ].map(c => (
+                      <button
+                        key={c.id}
+                        onClick={() => setCategoryFilter(c.id)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-mono transition ${
+                          categoryFilter === c.id
+                            ? c.id === "HOT"
+                              ? "bg-red-500/20 text-red-400 border border-red-500/50 font-bold"
+                              : c.id === "WARM"
+                              ? "bg-amber-500/20 text-amber-300 border border-amber-500/50 font-bold"
+                              : c.id === "COLD"
+                              ? "bg-blue-500/20 text-blue-300 border border-blue-500/50 font-bold"
+                              : "bg-[#C5A869]/20 text-[#E1CB8E] border border-[#C5A869]/40 font-bold"
+                            : "text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-800"
+                        }`}
+                      >
+                        {c.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Follow-up Pills */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-zinc-500 uppercase font-mono">Follow-up:</span>
+                    {[
+                      { id: "all", label: "All" },
+                      { id: "due_today", label: "Due Today" },
+                      { id: "overdue", label: "Overdue" },
+                      { id: "has_followup", label: "Has Pending" }
+                    ].map(f => (
+                      <button
+                        key={f.id}
+                        onClick={() => setFollowUpFilter(f.id)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-mono transition ${
+                          followUpFilter === f.id
+                            ? "bg-[#C5A869]/20 text-[#E1CB8E] border border-[#C5A869]/40 font-bold"
+                            : "text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-800"
+                        }`}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <span className="text-zinc-400 font-mono text-[11px]">
                     Showing {filteredLeads.length} of {leads.length} Customers
                   </span>
-                  {(searchQuery || statusFilter !== "all" || locationFilter !== "all" || budgetFilter !== "all" || followUpFilter !== "all") && (
+                  {(searchQuery || statusFilter !== "all" || categoryFilter !== "all" || locationFilter !== "all" || budgetFilter !== "all" || followUpFilter !== "all") && (
                     <button
                       onClick={() => {
                         setSearchQuery("");
                         setStatusFilter("all");
+                        setCategoryFilter("all");
                         setLocationFilter("all");
                         setBudgetFilter("all");
                         setFollowUpFilter("all");
@@ -926,7 +1072,8 @@ export default function SalesPersonDashboard() {
                   <thead className="bg-[#151720] text-zinc-400 uppercase font-mono border-b border-zinc-800">
                     <tr>
                       <th className="py-3.5 px-4 font-semibold">Customer</th>
-                      <th className="py-3.5 px-4 font-semibold">Requirements (Customer Tab)</th>
+                      <th className="py-3.5 px-4 font-semibold">Category / Temp</th>
+                      <th className="py-3.5 px-4 font-semibold">Requirements</th>
                       <th className="py-3.5 px-4 font-semibold">Budget Range</th>
                       <th className="py-3.5 px-4 font-semibold">Enquiry Date</th>
                       <th className="py-3.5 px-4 font-semibold">Lead Status</th>
@@ -987,6 +1134,28 @@ export default function SalesPersonDashboard() {
                                   </div>
                                 </div>
                               </div>
+                            </td>
+
+                            {/* Temperature Category & Score (HOT / WARM / COLD) */}
+                            <td className="py-4 px-4">
+                              {getLeadCategory(lead) === "HOT" && (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-red-950/80 text-red-400 border border-red-800/80 font-mono shadow-sm">
+                                  <Flame className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                                  <span>HOT • {getLeadScore(lead)}</span>
+                                </span>
+                              )}
+                              {getLeadCategory(lead) === "WARM" && (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-950/80 text-amber-300 border border-amber-800/80 font-mono shadow-sm">
+                                  <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                  <span>WARM • {getLeadScore(lead)}</span>
+                                </span>
+                              )}
+                              {getLeadCategory(lead) === "COLD" && (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-950/60 text-blue-300 border border-blue-800/80 font-mono shadow-sm">
+                                  <Snowflake className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                                  <span>COLD • {getLeadScore(lead)}</span>
+                                </span>
+                              )}
                             </td>
 
                             {/* Requirements (Customer Tab) */}
@@ -1602,6 +1771,73 @@ export default function SalesPersonDashboard() {
               {/* SUBTAB 1: REQUIREMENTS DOSSIER */}
               {drawerTab === "dossier" && (
                 <div className="space-y-6 animate-fade-in">
+                  {/* Lead Temperature & Scoring Assessment */}
+                  {(() => {
+                    const temp = getLeadCategory(selectedCustomer);
+                    const score = getLeadScore(selectedCustomer);
+                    const tempConfig = {
+                      HOT: {
+                        bg: "bg-red-500/10 border-red-500/30 text-red-400",
+                        badge: "bg-red-500/20 text-red-300 border-red-500/40",
+                        icon: Flame,
+                        label: "HOT LEAD",
+                        desc: "High buyer readiness, premium budget or active scheduled viewing. Immediate outreach recommended."
+                      },
+                      WARM: {
+                        bg: "bg-amber-500/10 border-amber-500/30 text-amber-400",
+                        badge: "bg-amber-500/20 text-amber-300 border-amber-500/40",
+                        icon: Sparkles,
+                        label: "WARM LEAD",
+                        desc: "Active interest, mid-term purchase timeline (within 3 months). Nurture with curated listings."
+                      },
+                      COLD: {
+                        bg: "bg-blue-500/10 border-blue-500/30 text-blue-400",
+                        badge: "bg-blue-500/20 text-blue-300 border-blue-500/40",
+                        icon: Snowflake,
+                        label: "COLD LEAD",
+                        desc: "Early exploratory stage or lower engagement. Automated updates and drip follow-up recommended."
+                      }
+                    }[temp];
+                    const TempIcon = tempConfig.icon;
+
+                    return (
+                      <div className={`p-4 rounded-2xl border ${tempConfig.bg} space-y-3`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border ${tempConfig.badge}`}>
+                              <TempIcon className="w-3.5 h-3.5" />
+                              {tempConfig.label}
+                            </span>
+                            <span className="text-xs font-mono text-zinc-400">
+                              Lead Score: <strong className="text-white font-bold">{score}</strong>/100
+                            </span>
+                          </div>
+                          <span className="text-[11px] font-mono text-zinc-400">
+                            Territory: <strong className="text-zinc-200">{selectedCustomer.locality || "All Territories"}</strong>
+                          </span>
+                        </div>
+
+                        {/* Visual Score Bar */}
+                        <div className="w-full bg-zinc-900 rounded-full h-2 overflow-hidden border border-zinc-800">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              temp === "HOT"
+                                ? "bg-gradient-to-r from-orange-500 to-red-500"
+                                : temp === "WARM"
+                                ? "bg-gradient-to-r from-yellow-500 to-amber-500"
+                                : "bg-gradient-to-r from-blue-400 to-cyan-500"
+                            }`}
+                            style={{ width: `${Math.min(100, Math.max(10, score))}%` }}
+                          />
+                        </div>
+
+                        <p className="text-xs text-zinc-300">
+                          {tempConfig.desc}
+                        </p>
+                      </div>
+                    );
+                  })()}
+
                   <div className="p-5 rounded-2xl bg-[#111319] border border-zinc-800 space-y-4">
                     <h3 className="font-bold text-sm text-white uppercase font-mono tracking-wider text-[#C5A869] flex items-center gap-2">
                       <Sparkles className="w-4 h-4" /> Requirements Captured via Customer Tab

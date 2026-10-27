@@ -299,6 +299,13 @@ export const api = {
     });
   },
 
+  async updateStaffPassword(userId: number, password: string): Promise<{ message: string; id: number }> {
+    return request<{ message: string; id: number }>(`/admin/users/${userId}/password`, {
+      method: "PUT",
+      body: JSON.stringify({ password })
+    });
+  },
+
   async deleteStaffUser(userId: number): Promise<{ message: string }> {
     return request<{ message: string }>(`/admin/users/${userId}`, {
       method: "DELETE"

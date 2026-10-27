@@ -217,6 +217,8 @@ export interface SystemAuditResponse {
   ai_status: string;
   system_version: string;
   recent_logs: SystemLogEntry[];
+  total_converted?: number;
+  conversion_rate?: number;
 }
 
 export interface SearchHistoryItem {

@@ -18,6 +18,7 @@ import { api } from "@/lib/api";
 import { Lead, RecommendationItem, LeadRequirements } from "@/lib/types";
 import { validateTextOnly } from "@/lib/countries";
 import { firebaseService } from "@/lib/firebase";
+import { getAllottedSalespersonForLocation } from "@/lib/staff";
 
 interface RequirementFormModalProps {
   isOpen: boolean;
@@ -256,6 +257,7 @@ export default function RequirementFormModal({
       
       // Sync to Firebase for Sales Person Dashboard
       try {
+        const specialist = getAllottedSalespersonForLocation(payload.locality);
         await firebaseService.saveLead({
           id: String(createdLead.id),
           customer_name: payload.customer_name,
@@ -271,8 +273,12 @@ export default function RequirementFormModal({
           purchase_timeline: payload.purchase_timeline,
           preferred_features: payload.preferred_features,
           pipeline_status: "New",
+          lead_category: (createdLead.lead_category as any) || "HOT",
+          lead_score: createdLead.lead_score || 85,
           purpose: payload.purpose,
           lead_type: payload.lead_type,
+          assigned_to_email: specialist.email,
+          assigned_agent_name: specialist.name,
           notes: payload.notes
         });
 

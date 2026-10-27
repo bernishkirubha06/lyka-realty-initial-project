@@ -1,0 +1,30 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+python-dotenv
+pydantic
+
+# Core Framework & ASGI Server
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+
+# Database & ORM
+sqlalchemy>=2.0.0
+
+# Configuration, Validation & Parsing
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
+python-multipart>=0.0.9
+
+# HTTP & Data Utilities
+requests>=2.31.0
+pandas>=2.0.0
+
+# AI Integration
+google-genai>=2.0.0
+huggingface_hub>=0.20.0
+
+# Optional local LLM packages
+# torch>=2.0.0
+# transformers>=4.40.0

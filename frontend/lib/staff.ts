@@ -227,3 +227,81 @@ export function getAllowedStaffEmails(role: "agent" | "manager" | "admin"): stri
   }
   return [];
 }
+
+/**
+ * Allotment of the 12 Real Estate Sales Persons to specific Dubai locations & prime communities
+ */
+export const LOCATION_SPECIALIST_MAP: Record<string, string> = {
+  // Rajesh Sharma
+  "downtown": "rajesh.sharma@lykarealty.ae",
+  "downtown dubai": "rajesh.sharma@lykarealty.ae",
+  "business bay": "rajesh.sharma@lykarealty.ae",
+  
+  // Sarah Jenkins
+  "palm jumeirah": "sarah.jenkins@lykarealty.ae",
+  "waterfront": "sarah.jenkins@lykarealty.ae",
+
+  // Tariq Mansoor
+  "dubai marina": "tariq.mansoor@lykarealty.ae",
+  "jbr": "tariq.mansoor@lykarealty.ae",
+  "jumeirah beach residence": "tariq.mansoor@lykarealty.ae",
+
+  // Ananya Subramanian
+  "dubai hills": "ananya.subramanian@lykarealty.ae",
+  "dubai hills estate": "ananya.subramanian@lykarealty.ae",
+  "emaar south": "ananya.subramanian@lykarealty.ae",
+
+  // Omar Farooq
+  "emirates hills": "omar.farooq@lykarealty.ae",
+  "jumeirah islands": "omar.farooq@lykarealty.ae",
+
+  // Priya Nair
+  "dubai creek": "priya.nair@lykarealty.ae",
+  "dubai creek harbour": "priya.nair@lykarealty.ae",
+  "mbr city": "priya.nair@lykarealty.ae",
+  "mohammed bin rashid city": "priya.nair@lykarealty.ae",
+
+  // Elena Rostova
+  "jumeirah bay": "elena.rostova@lykarealty.ae",
+  "penthouse": "elena.rostova@lykarealty.ae",
+
+  // Hassan Al-Zaabi
+  "signature villas": "hassan.alzaabi@lykarealty.ae",
+  "palm villas": "hassan.alzaabi@lykarealty.ae",
+  "private mansions": "hassan.alzaabi@lykarealty.ae",
+
+  // David Miller
+  "difc": "david.miller@lykarealty.ae",
+  "financial district": "david.miller@lykarealty.ae",
+
+  // Zainab Rashid
+  "bluewaters": "zainab.rashid@lykarealty.ae",
+  "bluewaters island": "zainab.rashid@lykarealty.ae",
+  "pearl jumeira": "zainab.rashid@lykarealty.ae",
+
+  // Marcus Vance
+  "arabian ranches": "marcus.vance@lykarealty.ae",
+  "tilal al ghaf": "marcus.vance@lykarealty.ae",
+
+  // Chloe Dubois
+  "city walk": "chloe.dubois@lykarealty.ae",
+  "la mer": "chloe.dubois@lykarealty.ae",
+  "nikki beach": "chloe.dubois@lykarealty.ae",
+};
+
+/**
+ * Automatically assign lead to the designated location specialist salesperson
+ */
+export function getAllottedSalespersonForLocation(location?: string | null): StaffMember {
+  if (location) {
+    const locLower = location.toLowerCase().trim();
+    for (const [key, email] of Object.entries(LOCATION_SPECIALIST_MAP)) {
+      if (locLower.includes(key)) {
+        const matched = APPROVED_SALES_PERSONS.find((sp) => sp.email.toLowerCase() === email.toLowerCase());
+        if (matched) return matched;
+      }
+    }
+  }
+  return APPROVED_SALES_PERSONS[Math.floor(Math.random() * APPROVED_SALES_PERSONS.length)];
+}
+

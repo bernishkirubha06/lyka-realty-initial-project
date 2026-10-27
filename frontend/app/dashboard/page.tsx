@@ -134,8 +134,23 @@ export default function CustomerDashboardPage() {
                   }
                 }
               } catch {}
+            } else {
+              try {
+                const matchRes = await api.getProperties({ city: "Dubai", page_size: 4 });
+                for (const m of matchRes.items) {
+                  if (!allRecProps.some(p => p.id === m.id)) {
+                    allRecProps.push(m);
+                  }
+                }
+              } catch {}
             }
           }
+        }
+        if (allRecProps.length === 0) {
+          try {
+            const fallbackRes = await api.getProperties({ city: "Dubai", page_size: 6 });
+            allRecProps.push(...fallbackRes.items);
+          } catch {}
         }
         setRecommendedProperties(allRecProps);
       } catch {

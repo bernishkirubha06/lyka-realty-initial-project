@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Cpu,
@@ -14,7 +14,16 @@ import {
   Terminal,
   Database,
   Sparkles,
-  X
+  X,
+  Eye,
+  EyeOff,
+  KeyRound,
+  TrendingUp,
+  Search,
+  Flame,
+  Zap,
+  Snowflake,
+  UserCheck
 } from "lucide-react";
 import PortalNavbar from "@/components/PortalNavbar";
 import {
@@ -25,6 +34,7 @@ import {
 import { Currency, formatCurrency } from "@/lib/currency";
 import { api } from "@/lib/api";
 import { DISALLOWED_MOCK_EMAILS } from "@/lib/staff";
+import { firebaseService, SalesLead } from "@/lib/firebase";
 
 export default function AdminDashboardPage() {
   const router = useRouter();
@@ -37,10 +47,15 @@ export default function AdminDashboardPage() {
   const [feedbackMsg, setFeedbackMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<"users" | "properties" | "demodata" | "logs">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "leads" | "properties" | "demodata" | "logs">("users");
+
+  // Real-time CRM Leads & Conversion Tracking
+  const [liveLeads, setLiveLeads] = useState<SalesLead[]>([]);
+  const [leadsSearch, setLeadsSearch] = useState("");
 
   // Add Staff Modal State
   const [addStaffOpen, setAddStaffOpen] = useState(false);
+  const [showNewStaffPassword, setShowNewStaffPassword] = useState(false);
   const [newStaffData, setNewStaffData] = useState({
     full_name: "",
     email: "",
@@ -48,6 +63,12 @@ export default function AdminDashboardPage() {
     role: "agent",
     phone: ""
   });
+
+  // Separate Password Management Modal for Staff
+  const [changePasswordModalUser, setChangePasswordModalUser] = useState<UserType | null>(null);
+  const [changePasswordInput, setChangePasswordInput] = useState("");
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
 
   // Add Property Modal State
   const [addPropOpen, setAddPropOpen] = useState(false);
@@ -68,9 +89,9 @@ export default function AdminDashboardPage() {
   const fetchAdminData = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. Staff users
+      // 1. Staff users - strictly isolate and exclude customers
       const users = await api.getAdminUsers();
-      setStaffUsers(users);
+      setStaffUsers(users.filter(u => u.role !== "customer"));
 
       // 2. Properties
       const props = await api.getProperties({ page_size: 20 });
@@ -90,7 +111,7 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     const stored = localStorage.getItem("propai_user");
     if (!stored) {
-      router.replace("/portal");
+      router.replace("/");
       return;
     }
     try {
@@ -101,7 +122,7 @@ export default function AdminDashboardPage() {
       if (DISALLOWED_MOCK_EMAILS.includes(cleanEmail) || !cleanEmail) {
         localStorage.removeItem("propai_user");
         localStorage.removeItem("propai_token");
-        router.replace("/portal?error=mock_forbidden");
+        router.replace("/");
         return;
       }
 
@@ -125,36 +146,85 @@ export default function AdminDashboardPage() {
 
       // Only admin allowed
       if (u.role !== "admin") {
-        router.replace("/portal");
+        router.replace("/");
         return;
       }
 
       setCurrentUser(u);
     } catch {
-      router.replace("/portal");
+      router.replace("/");
       return;
     }
     fetchAdminData();
+
+    // Subscribe to live CRM leads across all 12 salespersons for dynamic conversion tracking
+    const unsub = firebaseService.subscribeAssignedLeads("", (fbLeads: SalesLead[]) => {
+      setLiveLeads(fbLeads);
+    }, true);
+
+    return () => unsub();
   }, [fetchAdminData, router]);
 
-  const handleQuickLoginAsAdmin = async () => {
-    try {
-      setLoading(true);
-      const res = await api.login({ email: "alexander.vance@lykarealty.ae", password: "password123" });
-      setCurrentUser(res.user);
-      setFeedbackMsg({ text: "Signed in as Administrator Alexander Vance.", type: "success" });
-      fetchAdminData();
-    } catch {
-      try {
-        const res2 = await api.login({ email: "alexander.vance@lykarealty.ae", password: "admin123" });
-        setCurrentUser(res2.user);
-        setFeedbackMsg({ text: "Signed in as Administrator Alexander Vance.", type: "success" });
-        fetchAdminData();
-      } catch (err2: any) {
-        setFeedbackMsg({ text: "Admin login failed: " + err2.message, type: "error" });
-        setLoading(false);
-      }
+  // Dynamic Pipeline Metrics & Conversion Rate
+  const totalLeads = liveLeads.length > 0 ? liveLeads.length : (auditLogs?.total_leads || 0);
+  const convertedLeads = liveLeads.length > 0 
+    ? liveLeads.filter(l => (l.pipeline_status || "").toLowerCase().includes("convert")).length 
+    : (auditLogs?.total_converted || 0);
+  const conversionRate = totalLeads > 0 
+    ? Math.round((convertedLeads / totalLeads) * 100) 
+    : (auditLogs?.conversion_rate || 0);
+
+  const filteredAdminLeads = useMemo(() => {
+    if (!leadsSearch.trim()) return liveLeads;
+    const q = leadsSearch.toLowerCase();
+    return liveLeads.filter(l => 
+      l.customer_name?.toLowerCase().includes(q) ||
+      l.email?.toLowerCase().includes(q) ||
+      l.phone?.toLowerCase().includes(q) ||
+      l.locality?.toLowerCase().includes(q) ||
+      l.assigned_agent_name?.toLowerCase().includes(q)
+    );
+  }, [liveLeads, leadsSearch]);
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!changePasswordModalUser) return;
+    const cleanPw = changePasswordInput.trim();
+    if (cleanPw.length < 6) {
+      alert("Password must be at least 6 characters long.");
+      return;
     }
+    setSavingPassword(true);
+    try {
+      await api.updateStaffPassword(changePasswordModalUser.id, cleanPw);
+      setFeedbackMsg({
+        text: `Unique password successfully updated for ${changePasswordModalUser.full_name} (${changePasswordModalUser.email}).`,
+        type: "success"
+      });
+      setChangePasswordModalUser(null);
+      setChangePasswordInput("");
+    } catch (err: any) {
+      alert(err.message || "Failed to update staff password");
+    } finally {
+      setSavingPassword(false);
+    }
+  };
+
+  const handleUpdateLeadStatus = async (leadId: string, newStatus: string) => {
+    await firebaseService.updateLeadStatus(leadId, newStatus as any);
+    const numId = Number(leadId);
+    if (!isNaN(numId)) {
+      try {
+        await api.updateLead(numId, { pipeline_status: newStatus as any });
+      } catch {}
+    }
+    setLiveLeads((prev) =>
+      prev.map((l) => (String(l.id) === String(leadId) ? { ...l, pipeline_status: newStatus as any } : l))
+    );
+    setFeedbackMsg({
+      text: `Lead stage updated to "${newStatus}". Conversion and pipeline metrics updated dynamically.`,
+      type: "success"
+    });
   };
 
   const handleCreateStaff = async (e: React.FormEvent) => {
@@ -279,17 +349,6 @@ export default function AdminDashboardPage() {
               <span>{feedbackMsg.text}</span>
             </div>
             <div className="flex items-center gap-2">
-              {feedbackMsg.type === "error" && (!currentUser || currentUser.role !== "admin") && (
-                <button
-                  type="button"
-                  onClick={handleQuickLoginAsAdmin}
-                  disabled={loading}
-                  className="px-3 py-1.5 rounded-lg bg-[#C5A869] text-black font-bold text-xs hover:bg-[#B89A5B] transition shadow flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Sign In as Admin (alexander.vance@lykarealty.ae)
-                </button>
-              )}
               <button onClick={() => setFeedbackMsg(null)} className="text-zinc-400 hover:text-white p-1">
                 <X className="w-4 h-4" />
               </button>
@@ -305,7 +364,7 @@ export default function AdminDashboardPage() {
               <Users className="w-4 h-4 text-blue-400" />
             </div>
             <div className="text-2xl sm:text-3xl font-bold text-white">{staffUsers.length}</div>
-            <div className="text-[11px] text-zinc-500 mt-1">Agents, managers, admins</div>
+            <div className="text-[11px] text-zinc-500 mt-1">Agents, managers, admins only</div>
           </div>
 
           <div className="bg-[#111319] border border-[#232733] rounded-2xl p-4 sm:p-5">
@@ -317,30 +376,31 @@ export default function AdminDashboardPage() {
             <div className="text-[11px] text-zinc-500 mt-1">Full CRUD permissions enabled</div>
           </div>
 
-          <div className="bg-[#111319] border border-[#232733] rounded-2xl p-4 sm:p-5">
+          <div className="bg-[#111319] border border-purple-500/30 rounded-2xl p-4 sm:p-5">
             <div className="flex items-center justify-between text-zinc-400 mb-2">
-              <span className="text-xs font-medium">Database Leads</span>
+              <span className="text-xs font-medium">Total Pipeline Leads</span>
               <Database className="w-4 h-4 text-purple-400" />
             </div>
-            <div className="text-2xl sm:text-3xl font-bold text-purple-400">{auditLogs?.total_leads || 34}</div>
-            <div className="text-[11px] text-zinc-500 mt-1">SQLite DB: {auditLogs?.db_size_kb || 2048} KB</div>
+            <div className="text-2xl sm:text-3xl font-bold text-purple-400">{totalLeads}</div>
+            <div className="text-[11px] text-zinc-500 mt-1">{convertedLeads} converted • Real-time CRM</div>
           </div>
 
-          <div className="bg-[#111319] border border-[#232733] rounded-2xl p-4 sm:p-5">
+          <div className="bg-[#111319] border border-emerald-500/30 rounded-2xl p-4 sm:p-5">
             <div className="flex items-center justify-between text-zinc-400 mb-2">
-              <span className="text-xs font-medium">AI Engine Status</span>
-              <Cpu className="w-4 h-4 text-emerald-400" />
+              <span className="text-xs font-medium">Team Conversion Rate</span>
+              <TrendingUp className="w-4 h-4 text-emerald-400" />
             </div>
-            <div className="text-2xl sm:text-3xl font-bold text-emerald-400">Operational</div>
-            <div className="text-[11px] text-zinc-500 mt-1">Gemini &amp; scoring heuristics</div>
+            <div className="text-2xl sm:text-3xl font-bold text-emerald-400">{conversionRate}%</div>
+            <div className="text-[11px] text-zinc-500 mt-1">{convertedLeads} of {totalLeads} leads closed</div>
           </div>
         </div>
 
         {/* TABS */}
         <div className="flex items-center gap-2 border-b border-[#1E222D] overflow-x-auto pb-px">
           {[
-            { id: "users", label: `Staff & Role Permissions (${staffUsers.length})`, icon: Users },
-            { id: "properties", label: `Property Inventory Management (${properties.length})`, icon: Building2 },
+            { id: "users", label: `Staff Accounts (${staffUsers.length})`, icon: Users },
+            { id: "leads", label: `CRM Pipeline & Conversion (${totalLeads})`, icon: TrendingUp },
+            { id: "properties", label: `Property Inventory (${properties.length})`, icon: Building2 },
             { id: "demodata", label: "Demo Data & Validation", icon: Database },
             { id: "logs", label: "System Configuration & Logs", icon: Terminal },
           ].map((tab) => {
@@ -427,16 +487,173 @@ export default function AdminDashboardPage() {
                               <option value="admin">Admin (System Control)</option>
                             </select>
                           </td>
-                          <td className="px-4 py-3.5 text-right">
-                            {u.id !== currentUser?.id && (
+                          <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5">
                               <button
-                                onClick={() => handleDeleteStaff(u.id)}
-                                className="p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10 transition"
-                                title="Remove Staff Member"
+                                type="button"
+                                onClick={() => {
+                                  setChangePasswordModalUser(u);
+                                  setChangePasswordInput("");
+                                  setShowChangePassword(false);
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#C5A869]/10 text-[#E1CB8E] hover:bg-[#C5A869]/20 border border-[#C5A869]/30 font-semibold text-xs transition cursor-pointer"
+                                title={`Set custom separate password for ${u.full_name}`}
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <KeyRound className="w-3.5 h-3.5 text-[#C5A869]" />
+                                <span>Change Password</span>
                               </button>
-                            )}
+                              {u.id !== currentUser?.id && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteStaff(u.id)}
+                                  className="p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10 transition cursor-pointer"
+                                  title="Remove Staff Member"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 1.5: CRM PIPELINE LEADS & CONVERSION RATE */}
+        {activeTab === "leads" && (
+          <div className="space-y-4">
+            <div className="bg-[#111319] border border-[#232733] rounded-2xl p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+                <div>
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-emerald-400" />
+                    Live CRM Leads &amp; Conversion Control
+                  </h3>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    Live monitoring of all 12 salespersons. Dynamically update pipeline stages to &apos;Converted&apos; to instantly test and recalculate conversion rate metrics.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="text-xs font-mono px-3 py-1.5 rounded-xl bg-[#181B24] border border-[#262A36] text-zinc-300">
+                    Converted: <strong className="text-emerald-400">{convertedLeads}</strong> / {totalLeads} ({conversionRate}%)
+                  </div>
+                </div>
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <input
+                  type="text"
+                  value={leadsSearch}
+                  onChange={(e) => setLeadsSearch(e.target.value)}
+                  placeholder="Filter by customer name, email, phone, location, or assigned salesperson..."
+                  className="w-full bg-[#181B24] border border-[#262A36] focus:border-[#C5A869] rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-[#151720] text-zinc-400 uppercase tracking-wider border-b border-[#232733] font-mono">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">Customer Details</th>
+                      <th className="px-4 py-3 font-semibold">Assigned Salesperson</th>
+                      <th className="px-4 py-3 font-semibold">Requirement</th>
+                      <th className="px-4 py-3 font-semibold">Budget</th>
+                      <th className="px-4 py-3 font-semibold">Score / Temp</th>
+                      <th className="px-4 py-3 font-semibold">Pipeline Stage (Interactive)</th>
+                      <th className="px-4 py-3 font-semibold text-right">Quick Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#1E222D]">
+                    {filteredAdminLeads.map((lead) => {
+                      const isConverted = (lead.pipeline_status || "").toLowerCase().includes("convert");
+                      const isHot = lead.lead_category === "HOT" || (lead.lead_score && lead.lead_score >= 70);
+                      const isWarm = lead.lead_category === "WARM" || (lead.lead_score && lead.lead_score >= 40 && lead.lead_score < 70);
+
+                      return (
+                        <tr key={lead.id} className="hover:bg-zinc-800/20 transition">
+                          <td className="px-4 py-3.5">
+                            <div className="font-bold text-white">{lead.customer_name}</div>
+                            <div className="text-[11px] text-zinc-400 flex items-center gap-2 mt-0.5 font-mono">
+                              {lead.phone && <span>{lead.phone}</span>}
+                              {lead.email && <span className="text-zinc-500">• {lead.email}</span>}
+                            </div>
+                          </td>
+
+                          <td className="px-4 py-3.5">
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#181B24] border border-[#262A36] text-zinc-200">
+                              <UserCheck className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                              <span className="font-semibold text-xs">
+                                {lead.assigned_agent_name || "Unassigned"}
+                              </span>
+                            </div>
+                          </td>
+
+                          <td className="px-4 py-3.5">
+                            <div className="text-zinc-200 font-medium">
+                              {lead.bhk ? `${lead.bhk} BHK ` : ""}{lead.property_type || "Apartment"}
+                            </div>
+                            <div className="text-[11px] text-zinc-400 mt-0.5">
+                              {lead.locality || "Dubai"}
+                            </div>
+                          </td>
+
+                          <td className="px-4 py-3.5 font-mono text-[#E1CB8E] font-semibold">
+                            {lead.budget_max ? formatCurrency(lead.budget_max, currency) : "Flexible"}
+                          </td>
+
+                          <td className="px-4 py-3.5">
+                            <span className={`px-2 py-0.5 rounded text-[11px] font-bold font-mono inline-flex items-center gap-1 border ${
+                              isHot
+                                ? "bg-red-500/20 text-red-300 border-red-500/40"
+                                : isWarm
+                                ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                                : "bg-blue-500/20 text-blue-300 border-blue-500/40"
+                            }`}>
+                              {isHot ? <Flame className="w-3 h-3 text-red-400" /> : isWarm ? <Zap className="w-3 h-3 text-amber-400" /> : <Snowflake className="w-3 h-3 text-blue-400" />}
+                              {lead.lead_score || 75} • {lead.lead_category || (isHot ? "HOT" : isWarm ? "WARM" : "COLD")}
+                            </span>
+                          </td>
+
+                          <td className="px-4 py-3.5">
+                            <select
+                              value={lead.pipeline_status || "New"}
+                              onChange={(e) => handleUpdateLeadStatus(lead.id, e.target.value)}
+                              className={`rounded-lg px-2.5 py-1.5 text-xs font-mono font-semibold focus:outline-none border transition cursor-pointer ${
+                                isConverted
+                                  ? "bg-emerald-950/80 text-emerald-300 border-emerald-600 shadow-sm shadow-emerald-500/10"
+                                  : "bg-[#181B24] text-zinc-200 border-[#262A36] focus:border-[#C5A869]"
+                              }`}
+                            >
+                              <option value="New">New</option>
+                              <option value="Contacted">Contacted</option>
+                              <option value="Interested">Interested</option>
+                              <option value="Viewing Scheduled">Viewing Scheduled</option>
+                              <option value="Negotiation">Negotiation</option>
+                              <option value="Converted">🎉 Converted</option>
+                              <option value="Lost">Lost</option>
+                            </select>
+                          </td>
+
+                          <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateLeadStatus(lead.id, isConverted ? "Negotiation" : "Converted")}
+                              className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer border ${
+                                isConverted
+                                  ? "bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700"
+                                  : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30"
+                              }`}
+                            >
+                              {isConverted ? "Reopen Lead" : "Convert Lead"}
+                            </button>
                           </td>
                         </tr>
                       );
@@ -642,13 +859,23 @@ export default function AdminDashboardPage() {
 
               <div>
                 <label className="block text-xs font-medium text-zinc-400 mb-1">Temporary Password</label>
-                <input
-                  type="password"
-                  required
-                  value={newStaffData.password}
-                  onChange={(e) => setNewStaffData({ ...newStaffData, password: e.target.value })}
-                  className="w-full bg-[#181B24] border border-[#262A36] focus:border-[#C5A869] rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
-                />
+                <div className="relative">
+                  <input
+                    type={showNewStaffPassword ? "text" : "password"}
+                    required
+                    value={newStaffData.password}
+                    onChange={(e) => setNewStaffData({ ...newStaffData, password: e.target.value })}
+                    className="w-full bg-[#181B24] border border-[#262A36] focus:border-[#C5A869] rounded-xl pl-3 pr-10 py-2 text-xs text-white focus:outline-none font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewStaffPassword(!showNewStaffPassword)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition p-1 cursor-pointer"
+                    title={showNewStaffPassword ? "Hide password" : "View password"}
+                  >
+                    {showNewStaffPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -668,15 +895,96 @@ export default function AdminDashboardPage() {
                 <button
                   type="button"
                   onClick={() => setAddStaffOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-zinc-800 text-xs text-zinc-300 hover:text-white"
+                  className="px-4 py-2 rounded-xl bg-zinc-800 text-xs text-zinc-300 hover:text-white cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-[#C5A869] text-black font-semibold text-xs hover:bg-[#DFCA93]"
+                  className="px-4 py-2 rounded-xl bg-[#C5A869] text-black font-semibold text-xs hover:bg-[#DFCA93] cursor-pointer"
                 >
                   Save Staff Account
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* SEPARATE PASSWORD MODAL FOR STAFF MEMBERS */}
+      {changePasswordModalUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md bg-[#111319] border border-[#C5A869]/50 rounded-2xl p-6 text-zinc-200 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-[#232733] mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-[#C5A869]/15 text-[#E1CB8E] border border-[#C5A869]/30">
+                  <KeyRound className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Change Staff Password</h3>
+                  <p className="text-[11px] text-zinc-400">Set a unique, separate login password</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setChangePasswordModalUser(null)} 
+                className="text-zinc-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-[#181B24] border border-[#262A36] mb-4 space-y-1">
+              <div className="text-xs font-bold text-white">{changePasswordModalUser.full_name}</div>
+              <div className="text-[11px] font-mono text-[#C5A869]">{changePasswordModalUser.email}</div>
+              <div className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider">
+                Assigned Role: <span className="text-zinc-200">{changePasswordModalUser.role}</span>
+              </div>
+            </div>
+
+            <form onSubmit={handleChangePassword} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-1">
+                  New Unique Password (minimum 6 characters)
+                </label>
+                <div className="relative">
+                  <input
+                    type={showChangePassword ? "text" : "password"}
+                    required
+                    minLength={6}
+                    value={changePasswordInput}
+                    onChange={(e) => setChangePasswordInput(e.target.value)}
+                    placeholder="Enter unique password..."
+                    className="w-full bg-[#181B24] border border-[#262A36] focus:border-[#C5A869] rounded-xl pl-3 pr-10 py-2.5 text-xs text-white focus:outline-none font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowChangePassword(!showChangePassword)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition p-1 cursor-pointer"
+                    title={showChangePassword ? "Hide password" : "View password"}
+                  >
+                    {showChangePassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[10px] text-zinc-500 mt-1.5">
+                  Changing this will update this specific staff member&apos;s password separately. Default initial passwords will no longer work for this account.
+                </p>
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setChangePasswordModalUser(null)}
+                  className="px-4 py-2 rounded-xl bg-zinc-800 text-xs text-zinc-300 hover:text-white cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingPassword || changePasswordInput.trim().length < 6}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#C5A869] to-[#DFCA93] text-black font-semibold text-xs hover:opacity-95 transition disabled:opacity-50 cursor-pointer flex items-center gap-1.5 shadow"
+                >
+                  {savingPassword ? "Updating..." : "Save Password"}
                 </button>
               </div>
             </form>

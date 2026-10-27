@@ -180,16 +180,55 @@ def create_lead(
     score = calculate_lead_score(req)
     ai_summary = generate_ai_lead_summary(req, score)
 
-    # Assign lead to creator if they are an agent, otherwise assign to an agent in database
+    # Location-based specialist allotment (assign to designated area salesperson)
+    LOCATION_AGENT_MAP = {
+        "downtown": "rajesh.sharma@lykarealty.ae",
+        "business bay": "rajesh.sharma@lykarealty.ae",
+        "palm jumeirah": "sarah.jenkins@lykarealty.ae",
+        "waterfront": "sarah.jenkins@lykarealty.ae",
+        "dubai marina": "tariq.mansoor@lykarealty.ae",
+        "jbr": "tariq.mansoor@lykarealty.ae",
+        "dubai hills": "ananya.subramanian@lykarealty.ae",
+        "emaar south": "ananya.subramanian@lykarealty.ae",
+        "emirates hills": "omar.farooq@lykarealty.ae",
+        "jumeirah islands": "omar.farooq@lykarealty.ae",
+        "dubai creek": "priya.nair@lykarealty.ae",
+        "creek harbour": "priya.nair@lykarealty.ae",
+        "mbr city": "priya.nair@lykarealty.ae",
+        "jumeirah bay": "elena.rostova@lykarealty.ae",
+        "penthouse": "elena.rostova@lykarealty.ae",
+        "signature villas": "hassan.alzaabi@lykarealty.ae",
+        "private mansions": "hassan.alzaabi@lykarealty.ae",
+        "difc": "david.miller@lykarealty.ae",
+        "bluewaters": "zainab.rashid@lykarealty.ae",
+        "pearl jumeira": "zainab.rashid@lykarealty.ae",
+        "arabian ranches": "marcus.vance@lykarealty.ae",
+        "tilal al ghaf": "marcus.vance@lykarealty.ae",
+        "city walk": "chloe.dubois@lykarealty.ae",
+        "la mer": "chloe.dubois@lykarealty.ae",
+    }
+
+    # Assign lead to creator if they are an agent, otherwise assign to designated location specialist
     assigned_agent_id = current_user.id if (current_user and current_user.role == "agent") else None
     if not assigned_agent_id:
-        fallback_agent = db.query(User).filter(User.role == "agent").first()
-        if fallback_agent:
-            assigned_agent_id = fallback_agent.id
+        target_loc = (lead_in.locality or lead_in.city or "").lower().strip()
+        matched_agent = None
+        for key, email in LOCATION_AGENT_MAP.items():
+            if key in target_loc:
+                matched_agent = db.query(User).filter(func.lower(User.email) == email, User.role == "agent").first()
+                if matched_agent:
+                    break
+        if matched_agent:
+            assigned_agent_id = matched_agent.id
         else:
-            staff_user = db.query(User).filter(User.role.in_(["agent", "manager", "admin"])).first()
-            if staff_user:
-                assigned_agent_id = staff_user.id
+            agents = db.query(User).filter(User.role == "agent").all()
+            if agents:
+                agent_counts = {a.id: db.query(Lead).filter(Lead.user_id == a.id).count() for a in agents}
+                assigned_agent_id = min(agent_counts, key=agent_counts.get)
+            else:
+                staff_user = db.query(User).filter(User.role.in_(["agent", "manager", "admin"])).first()
+                if staff_user:
+                    assigned_agent_id = staff_user.id
 
     submitting_client_id = current_user.id if current_user else None
     client_name = lead_in.customer_name or (current_user.full_name if current_user else "Client")
@@ -298,16 +337,43 @@ def get_my_all_leads(
 ):
     if not user:
         return []
-    # Only return actual property requirement submissions (not raw account-only registration logs)
-    q = _get_user_leads_query(db, user).filter(
-        or_(
-            Lead.locality.isnot(None),
-            Lead.bhk.isnot(None),
-            Lead.budget_max.isnot(None),
-            Lead.budget_min.isnot(None)
+    
+    leads = _get_user_leads_query(db, user).order_by(desc(Lead.created_at)).all()
+    
+    # If customer is enrolled but has no lead record yet, generate their primary enrolled lead
+    if not leads and user.role == "customer":
+        agents = db.query(User).filter(User.role == "agent").all()
+        assigned_id = agents[0].id if agents else None
+        auto_lead = Lead(
+            user_id=assigned_id,
+            client_id=user.id,
+            customer_name=user.full_name or "Valued Client",
+            email=user.email,
+            phone=user.phone,
+            lead_type="Buyer",
+            city="Dubai",
+            locality="Downtown Dubai",
+            address=user.address,
+            country=user.country,
+            gender=user.gender,
+            dob=user.dob,
+            property_type="Apartment",
+            bhk=2,
+            budget_min=1000000,
+            budget_max=3000000,
+            currency="AED",
+            purchase_timeline="Within 3 months",
+            pipeline_status="new",
+            lead_score=50,
+            lead_category="WARM",
+            lead_explanation="Registered customer account on Lyka Realty website portal.",
+            ai_summary=f"Enrolled customer account: {user.full_name or 'Client'}. Registered email {user.email}."
         )
-    )
-    leads = q.order_by(desc(Lead.created_at)).all()
+        db.add(auto_lead)
+        db.commit()
+        db.refresh(auto_lead)
+        leads = [auto_lead]
+
     return [_format_lead_response(l, db) for l in leads]
 
 @router.get("/my-lead", response_model=Optional[LeadResponse])
@@ -317,14 +383,10 @@ def get_my_current_lead(
 ):
     if not user:
         return None
-    lead = _get_user_leads_query(db, user).filter(
-        or_(
-            Lead.locality.isnot(None),
-            Lead.bhk.isnot(None),
-            Lead.budget_max.isnot(None),
-            Lead.budget_min.isnot(None)
-        )
-    ).order_by(desc(Lead.created_at)).first()
+    lead = _get_user_leads_query(db, user).order_by(desc(Lead.created_at)).first()
+    if not lead and user.role == "customer":
+        all_leads = get_my_all_leads(db, user)
+        return all_leads[0] if all_leads else None
     if not lead:
         return None
     return _format_lead_response(lead, db)

@@ -41,13 +41,19 @@ class SystemAuditResponse(BaseModel):
     ai_status: str
     system_version: str
     recent_logs: List[SystemLogEntry]
+    total_converted: Optional[int] = 0
+    conversion_rate: Optional[float] = 0.0
+
+class PasswordUpdate(BaseModel):
+    password: str
 
 @router.get("/users", response_model=List[UserResponse])
 def get_staff_users(
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin)
 ):
-    users = db.query(User).order_by(User.role.asc(), User.id.asc()).all()
+    # Strictly return only authorized staff roles (agent, manager, admin); customers are completely excluded
+    users = db.query(User).filter(User.role.in_(["agent", "manager", "admin"])).order_by(User.role.asc(), User.id.asc()).all()
     return [UserResponse.from_orm(u) for u in users]
 
 @router.post("/users", response_model=UserResponse)
@@ -112,6 +118,32 @@ def update_user_role(
     db.refresh(target_user)
     return UserResponse.from_orm(target_user)
 
+@router.put("/users/{user_id}/password")
+def update_staff_password(
+    user_id: int,
+    pw_in: PasswordUpdate,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin)
+):
+    new_pw = (pw_in.password or "").strip()
+    if len(new_pw) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 6 characters long."
+        )
+
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Staff user not found")
+
+    target_user.hashed_password = hash_password(new_pw)
+    db.commit()
+    db.refresh(target_user)
+    return {
+        "message": f"Password updated successfully for {target_user.full_name} ({target_user.email})",
+        "id": user_id
+    }
+
 @router.delete("/users/{user_id}")
 def delete_staff_user(
     user_id: int,
@@ -133,8 +165,10 @@ def get_system_audit_logs(
     db: Session = Depends(get_db),
     admin: User = Depends(get_current_admin)
 ):
-    total_staff = db.query(User).count()
+    total_staff = db.query(User).filter(User.role.in_(["agent", "manager", "admin"])).count()
     total_leads = db.query(Lead).count()
+    total_converted = db.query(Lead).filter(Lead.pipeline_status.ilike("%convert%")).count()
+    conversion_rate = round((total_converted / total_leads * 100), 1) if total_leads > 0 else 0.0
     total_properties = db.query(Property).count()
 
     db_path = "lyka_realty.db"
@@ -145,7 +179,7 @@ def get_system_audit_logs(
     now_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
     sample_logs = [
         SystemLogEntry(timestamp=now_str, level="INFO", module="AUTH_RBAC", message=f"Admin session active: {admin.email} (Alexander Vance)"),
-        SystemLogEntry(timestamp=now_str, level="INFO", module="LEAD_ENGINE", message=f"Total active pipeline leads loaded: {total_leads}"),
+        SystemLogEntry(timestamp=now_str, level="INFO", module="LEAD_ENGINE", message=f"Total active pipeline leads loaded: {total_leads} ({total_converted} converted - {conversion_rate}%)"),
         SystemLogEntry(timestamp=now_str, level="INFO", module="INVENTORY", message=f"Live property listings indexed: {total_properties}"),
         SystemLogEntry(timestamp=now_str, level="SUCCESS", module="AI_MODELS", message="Gemini & local heuristic scoring engine connected"),
         SystemLogEntry(timestamp=now_str, level="INFO", module="SECURITY", message="Role enforcement active: Agent (Isolated), Manager (Team), Admin (Full)")
@@ -158,7 +192,9 @@ def get_system_audit_logs(
         total_properties=total_properties,
         ai_status="Operational (Active)",
         system_version="Lyka Realty CRM v2.4 (Enterprise RBAC)",
-        recent_logs=sample_logs
+        recent_logs=sample_logs,
+        total_converted=total_converted,
+        conversion_rate=conversion_rate
     )
 
 @router.post("/seed-demo")
