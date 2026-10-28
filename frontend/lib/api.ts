@@ -15,20 +15,23 @@ import {
 } from "./types";
 
 const getBaseUrl = (): string => {
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
+  const envUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (envUrl) {
+    // If running in browser and envUrl points to local port 8000,
+    // use same-origin "/api" proxy rewrite to avoid browser CORS/PNA restrictions
+    if (typeof window !== "undefined" && (envUrl.includes("localhost:8000") || envUrl.includes("127.0.0.1:8000"))) {
+      return "/api";
+    }
+    return envUrl.replace(/\/+$/, "");
   }
+
+  // Browser: ALWAYS use relative "/api" (same-origin via Next.js proxy rewrite)
   if (typeof window !== "undefined") {
-    const hostname = window.location.hostname;
-    // Always prefer 127.0.0.1 over localhost to prevent Windows IPv6 (::1) connection refused issues
-    if (hostname === "localhost" || hostname === "127.0.0.1") {
-      return "http://127.0.0.1:8000/api";
-    }
-    if (hostname) {
-      return `http://${hostname}:8000/api`;
-    }
+    return "/api";
   }
-  return "http://127.0.0.1:8000/api";
+
+  // Server-Side Rendering (SSR) in Node.js: direct internal backend URL
+  return process.env.INTERNAL_API_URL || "http://127.0.0.1:8000/api";
 };
 
 export const BASE_URL = getBaseUrl();
@@ -41,7 +44,13 @@ function getAuthHeader(): Record<string, string> {
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const baseUrl = getBaseUrl();
-  const url = `${baseUrl}${endpoint}`;
+  const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+
+  // Build URL avoiding double slashes or duplicated "/api"
+  const url = baseUrl.endsWith("/api") && cleanEndpoint.startsWith("/api/")
+    ? `${baseUrl}${cleanEndpoint.slice(4)}`
+    : `${baseUrl}${cleanEndpoint}`;
+
   const headers = {
     "Content-Type": "application/json",
     ...getAuthHeader(),
@@ -54,24 +63,50 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
       let errMsg = `Request failed: ${res.status}`;
       try {
         const errJson = await res.json();
-        errMsg = errJson.detail || errMsg;
-      } catch {}
+        errMsg = errJson.detail || errJson.message || errMsg;
+      } catch {
+        const text = await res.text().catch(() => "");
+        if (text) errMsg = text.slice(0, 150);
+      }
       throw new Error(errMsg);
     }
     return await res.json();
   } catch (err: any) {
-    // If direct fetch to backend failed (e.g. host binding issue), retry via Next.js /api proxy rewrite
-    if (typeof window !== "undefined" && !endpoint.startsWith("http")) {
-      try {
-        const fallbackUrl = `/api${endpoint}`;
-        const fallbackRes = await fetch(fallbackUrl, { ...options, headers });
-        if (fallbackRes.ok) {
-          return await fallbackRes.json();
-        }
-      } catch {}
+    // If it's a known HTTP error thrown above, DO NOT disguise it as "Failed to fetch"
+    if (err.message && !err.message.includes("Failed to fetch") && !err.message.includes("NetworkError")) {
+      console.error(`API Error on ${endpoint}:`, err.message);
+      throw err;
     }
-    console.error(`API Error on ${endpoint}:`, err);
-    throw err;
+
+    // Only if it was an actual network failure (e.g. proxy issue), attempt fallback
+    if (typeof window !== "undefined") {
+      try {
+        const fallbackBase = url.startsWith("/api")
+          ? "http://127.0.0.1:8000/api"
+          : "/api";
+        const fallbackUrl = `${fallbackBase}${cleanEndpoint}`;
+
+        const fallbackRes = await fetch(fallbackUrl, { ...options, headers });
+        if (!fallbackRes.ok) {
+          let errMsg = `Request failed: ${fallbackRes.status}`;
+          try {
+            const errJson = await fallbackRes.json();
+            errMsg = errJson.detail || errJson.message || errMsg;
+          } catch {}
+          throw new Error(errMsg);
+        }
+        return await fallbackRes.json();
+      } catch (fallbackErr: any) {
+        if (fallbackErr.message && !fallbackErr.message.includes("Failed to fetch")) {
+          throw fallbackErr;
+        }
+      }
+    }
+
+    console.error(`API Connection Error on ${endpoint}:`, err);
+    throw new Error(
+      "Unable to connect to the backend server. Please verify that the backend API is running on port 8000."
+    );
   }
 }
 
@@ -139,26 +174,42 @@ export const api = {
 
   async transcribeVoice(sampleText?: string, audioBlob?: Blob): Promise<{ transcription: string; confidence: number }> {
     const baseUrl = getBaseUrl();
+    const url = `${baseUrl}/ai/voice/transcribe`;
+    const formData = new FormData();
     if (audioBlob) {
-      const formData = new FormData();
       formData.append("file", audioBlob, "voice_input.wav");
-      const url = `${baseUrl}/ai/voice/transcribe`;
+    } else if (sampleText) {
+      formData.append("sample_text", sampleText);
+    }
+
+    try {
       const res = await fetch(url, {
         method: "POST",
         body: formData,
         headers: getAuthHeader()
       });
+      if (!res.ok) {
+        let errMsg = `Voice transcription failed (${res.status})`;
+        try {
+          const errJson = await res.json();
+          errMsg = errJson.detail || errMsg;
+        } catch {}
+        throw new Error(errMsg);
+      }
       return await res.json();
-    } else {
-      const formData = new FormData();
-      if (sampleText) formData.append("sample_text", sampleText);
-      const url = `${baseUrl}/ai/voice/transcribe`;
-      const res = await fetch(url, {
-        method: "POST",
-        body: formData,
-        headers: getAuthHeader()
-      });
-      return await res.json();
+    } catch (err: any) {
+      // Fallback to direct backend if relative proxy failed
+      if (typeof window !== "undefined" && url.startsWith("/api")) {
+        try {
+          const fallbackRes = await fetch("http://127.0.0.1:8000/api/ai/voice/transcribe", {
+            method: "POST",
+            body: formData,
+            headers: getAuthHeader()
+          });
+          if (fallbackRes.ok) return await fallbackRes.json();
+        } catch {}
+      }
+      throw err;
     }
   },
 

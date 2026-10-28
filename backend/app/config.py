@@ -12,7 +12,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     
     # Database: SQLite default for reliable plug-and-play, supports PostgreSQL seamlessly
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./lyka_realty.db")
+    _root_dir: str = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    _default_db: str = os.path.join(_root_dir, "lyka_realty.db").replace("\\", "/")
+    DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{_default_db}")
     
     # AI configuration
     GEMINI_API_KEY: Optional[str] = os.getenv("GEMINI_API_KEY", None)

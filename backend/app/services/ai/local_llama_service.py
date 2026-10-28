@@ -1,5 +1,3 @@
-import torch
-from transformers import pipeline
 from typing import Optional, List, Dict, Any
 from app.config import settings
 
@@ -21,6 +19,13 @@ def get_llama_pipeline():
     if _llama_pipe is not None:
         return _llama_pipe
     if _pipe_loading or _pipe_failed:
+        return None
+
+    try:
+        import torch
+        from transformers import pipeline
+    except ImportError:
+        _pipe_failed = True
         return None
 
     model_id = getattr(settings, "LOCAL_LLAMA_MODEL", "meta-llama/Llama-3.2-3B-Instruct")

@@ -1,3 +1,13 @@
+import os
+import sys
+
+# Ensure the backend directory is in sys.path and PYTHONPATH so 'from app...' works universally
+_backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _backend_dir not in sys.path:
+    sys.path.insert(0, _backend_dir)
+if _backend_dir not in os.environ.get("PYTHONPATH", ""):
+    os.environ["PYTHONPATH"] = (_backend_dir + os.pathsep + os.environ.get("PYTHONPATH", "")).rstrip(os.pathsep)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
@@ -25,13 +35,21 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS Middleware
+# CORS & Private Network Access Middleware
+@app.middleware("http")
+async def add_private_network_header(request, call_next):
+    response = await call_next(request)
+    if "access-control-request-private-network" in request.headers:
+        response.headers["Access-Control-Allow-Private-Network"] = "true"
+    return response
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_private_network=True,
 )
 
 # Include Routers
